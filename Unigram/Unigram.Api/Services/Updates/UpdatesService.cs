@@ -1974,6 +1974,10 @@ namespace Telegram.Api.Services.Updates
                         Helpers.Execute.BeginOnThreadPool(() => _eventAggregator.Publish(updateNotifySettings));
                     }
                 }
+                else
+                {
+                    Helpers.Execute.BeginOnThreadPool(() => _eventAggregator.Publish(updateNotifySettings));
+                }
 
                 return true;
             }
@@ -1981,11 +1985,11 @@ namespace Telegram.Api.Services.Updates
             var updateWebPage = update as TLUpdateWebPage;
             if (updateWebPage != null)
             {
-                var message = _cacheService.GetMessage(updateWebPage.Webpage) as TLMessage;
+                var message = _cacheService.GetMessage(updateWebPage.WebPage) as TLMessage;
                 if (message != null)
                 {
                     // TODO: message._media = new TLMessageMediaWebPage { Webpage = updateWebPage.Webpage };
-                    message.Media = new TLMessageMediaWebPage { Webpage = updateWebPage.Webpage };
+                    message.Media = new TLMessageMediaWebPage { WebPage = updateWebPage.WebPage };
 
                     _cacheService.SyncMessage(message,
                         m =>

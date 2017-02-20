@@ -61,108 +61,15 @@ namespace Unigram.Common
         }
     }
 
-    public class TLBitmapContext
-    {
-        private Dictionary<object, WeakReference<TLBitmapSource>> _context = new Dictionary<object, WeakReference<TLBitmapSource>>();
-
-        public BitmapImage this[TLPhoto photo]
-        {
-            get
-            {
-                TLBitmapSource target;
-                WeakReference<TLBitmapSource> reference;
-                if (_context.TryGetValue(photo, out reference) && reference.TryGetTarget(out target))
-                {
-                    return target.Image;
-                }
-
-                target = new TLBitmapSource(photo);
-                _context[photo] = new WeakReference<TLBitmapSource>(target);
-                return target.Image;
-            }
-        }
-
-        public BitmapImage this[TLDocument document]
-        {
-            get
-            {
-                TLBitmapSource target;
-                WeakReference<TLBitmapSource> reference;
-                if (_context.TryGetValue(document, out reference) && reference.TryGetTarget(out target))
-                {
-                    return target.Image;
-                }
-
-                target = new TLBitmapSource(document);
-                _context[document] = new WeakReference<TLBitmapSource>(target);
-                return target.Image;
-            }
-        }
-
-        public BitmapImage this[TLUser user]
-        {
-            get
-            {
-                if (user.Photo == null)
-                {
-                    user.Photo = new TLUserProfilePhotoEmpty();
-                }
-
-                TLBitmapSource target;
-                WeakReference<TLBitmapSource> reference;
-                if (_context.TryGetValue(user.Photo, out reference) && reference.TryGetTarget(out target))
-                {
-                    return target.Image;
-                }
-
-                target = new TLBitmapSource(user);
-                _context[user.Photo] = new WeakReference<TLBitmapSource>(target);
-                return target.Image;
-            }
-        }
-
-        public BitmapImage this[TLChat chat]
-        {
-            get
-            {
-                TLBitmapSource target;
-                WeakReference<TLBitmapSource> reference;
-                if (_context.TryGetValue(chat.Photo, out reference) && reference.TryGetTarget(out target))
-                {
-                    return target.Image;
-                }
-
-                target = new TLBitmapSource(chat);
-                _context[chat.Photo] = new WeakReference<TLBitmapSource>(target);
-                return target.Image;
-            }
-        }
-
-        public BitmapImage this[TLChannel channel]
-        {
-            get
-            {
-                TLBitmapSource target;
-                WeakReference<TLBitmapSource> reference;
-                if (_context.TryGetValue(channel.Photo, out reference) && reference.TryGetTarget(out target))
-                {
-                    return target.Image;
-                }
-
-                target = new TLBitmapSource(channel);
-                _context[channel.Photo] = new WeakReference<TLBitmapSource>(target);
-                return target.Image;
-            }
-        }
-
-        public void Clear()
-        {
-            _context.Clear();
-        }
-    }
-
     public class TLBitmapSource
     {
+        private static readonly IDownloadFileManager _downloadFileManager;
+
+        static TLBitmapSource()
+        {
+            _downloadFileManager = UnigramContainer.Instance.ResolveType<IDownloadFileManager>();
+        }
+
         public const int PHASE_PLACEHOLDER = 0;
         public const int PHASE_THUMBNAIL = 1;
         public const int PHASE_FULL = 2;
@@ -180,13 +87,13 @@ namespace Unigram.Common
             {
                 if (TrySetSource(userProfilePhoto.PhotoSmall as TLFileLocation, PHASE_FULL) == false)
                 {
-                    SetProfilePlaceholder(user, "u" + user.Id, user.Id);
+                    SetProfilePlaceholder(user, "u" + user.Id, user.Id, user.FullName);
                     SetSource(userProfilePhoto.PhotoSmall as TLFileLocation, 0, PHASE_FULL);
                 }
             }
             else
             {
-                SetProfilePlaceholder(user, "u" + user.Id, user.Id);
+                SetProfilePlaceholder(user, "u" + user.Id, user.Id, user.FullName);
             }
         }
 
@@ -211,13 +118,13 @@ namespace Unigram.Common
             {
                 if (TrySetSource(chatPhoto.PhotoSmall as TLFileLocation, PHASE_FULL) == false)
                 {
-                    SetProfilePlaceholder(chatBase, "c" + chatBase.Id, chatBase.Id);
+                    SetProfilePlaceholder(chatBase, "c" + chatBase.Id, chatBase.Id, chatBase.FullName);
                     SetSource(chatPhoto.PhotoSmall as TLFileLocation, 0, PHASE_FULL);
                 }
             }
             else
             {
-                SetProfilePlaceholder(chatBase, "c" + chatBase.Id, chatBase.Id);
+                SetProfilePlaceholder(chatBase, "c" + chatBase.Id, chatBase.Id, chatBase.FullName);
             }
         }
 
@@ -239,18 +146,18 @@ namespace Unigram.Common
             SetSource(document.Thumb, PHASE_THUMBNAIL);
         }
 
-        public async void SetProfilePlaceholder(object value, string group, int id)
+        public async void SetProfilePlaceholder(object value, string group, int id, string name)
         {
             if (PHASE_PLACEHOLDER >= Phase)
             {
                 Phase = PHASE_PLACEHOLDER;
 
-                var file = await ApplicationData.Current.LocalFolder.CreateFileAsync("temp\\" + group + "_placeholder.png", CreationCollisionOption.OpenIfExists);
+                var file = await ApplicationData.Current.LocalFolder.CreateFileAsync("temp\\placeholders\\" + group + "_placeholder.png", CreationCollisionOption.OpenIfExists);
                 using (var stream = await file.OpenAsync(FileAccessMode.ReadWrite))
                 {
                     if (stream.Size == 0)
                     {
-                        PlaceholderImageSource.Draw(BindConvert.Current.PlaceholderColors[id % 6], InitialNameStringConverter.Convert(value), stream);
+                        PlaceholderImageSource.Draw(BindConvert.Current.Bubble(id).Color, InitialNameStringConverter.Convert(value), stream);
                         stream.Seek(0);
                     }
 
@@ -304,11 +211,11 @@ namespace Unigram.Common
         {
             if (phase >= Phase && location != null)
             {
-                Phase = phase;
-
                 var fileName = string.Format("{0}_{1}_{2}.jpg", location.VolumeId, location.LocalId, location.Secret);
                 if (File.Exists(FileUtils.GetTempFileName(fileName)))
                 {
+                    Phase = phase;
+
                     Image.SetSource(FileUtils.GetTempFileUri(fileName));
                     return true;
                 }
@@ -330,15 +237,27 @@ namespace Unigram.Common
                 }
                 else
                 {
-                    Execute.BeginOnThreadPool(async () =>
-                    {
-                        var manager = UnigramContainer.Instance.ResolveType<IDownloadFileManager>();
-                        await manager.DownloadFileAsync(location, fileSize);
+                    //Execute.BeginOnThreadPool(async () =>
+                    //{
+                    //    var result = await _downloadFileManager.DownloadFileAsync(location, fileSize);
+                    //    if (result != null && Phase <= phase)
+                    //    {
+                    //        Execute.BeginOnUIThread(() =>
+                    //        {
+                    //            Image.SetSource(FileUtils.GetTempFileUri(fileName));
+                    //        });
+                    //    }
+                    //});
 
-                        Execute.BeginOnUIThread(() =>
+                    _downloadFileManager.DownloadFile(location, fileSize, result =>
+                    {
+                        if (result != null && Phase <= phase)
                         {
-                            Image.SetSource(FileUtils.GetTempFileUri(fileName));
-                        });
+                            Execute.BeginOnUIThread(() =>
+                            {
+                                Image.SetSource(FileUtils.GetTempFileUri(fileName));
+                            });
+                        }
                     });
                 }
             }

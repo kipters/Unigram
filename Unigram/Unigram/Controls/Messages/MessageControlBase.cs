@@ -87,7 +87,7 @@ namespace Unigram.Controls.Messages
                 if (message.IsFirst && !message.IsOut && !message.IsPost && (message.ToId is TLPeerChat || message.ToId is TLPeerChannel))
                 {
                     var hyperlink = new Hyperlink();
-                    hyperlink.Inlines.Add(new Run { Text = message.From?.FullName, Foreground = Convert.Bubble(message.FromId) });
+                    hyperlink.Inlines.Add(new Run { Text = message.From?.FullName, Foreground = Convert.Bubble(message.FromId ?? 0) });
                     hyperlink.UnderlineStyle = UnderlineStyle.None;
                     hyperlink.Foreground = paragraph.Foreground;
                     hyperlink.Click += (s, args) => From_Click(message);
@@ -188,11 +188,11 @@ namespace Unigram.Controls.Messages
                 if (message.FwdFrom.HasChannelPost)
                 {
                     // TODO
-                    Context.NavigationService.Navigate(typeof(DialogPage), new Tuple<TLPeerBase, int>(new TLPeerChannel { ChannelId = message.FwdFromChannel.Id }, message.FwdFrom.ChannelPost ?? int.MaxValue));
+                    Context.NavigationService.Navigate(typeof(DialogPage), Tuple.Create((TLPeerBase)new TLPeerChannel { ChannelId = message.FwdFromChannel.Id }, message.FwdFrom.ChannelPost ?? int.MaxValue));
                 }
                 else
                 {
-                    Context.NavigationService.Navigate(typeof(UserInfoPage), new TLPeerChannel { ChannelId = message.FwdFromChannel.Id });
+                    Context.NavigationService.Navigate(typeof(DialogPage), new TLPeerChannel { ChannelId = message.FwdFromChannel.Id });
                 }
             }
             else if (message.FwdFromUser != null)
@@ -256,6 +256,8 @@ namespace Unigram.Controls.Messages
         /// x:Bind hack
         /// </summary>
         public new event TypedEventHandler<FrameworkElement, object> Loading;
+
+        private StackPanel _statusControl;
 
         protected override Size MeasureOverride(Size availableSize)
         {
@@ -322,6 +324,14 @@ namespace Unigram.Controls.Messages
             }
 
             Calculate:
+
+            if (_statusControl == null)
+                _statusControl = FindName("StatusControl") as StackPanel;
+            if (_statusControl.DesiredSize.IsEmpty)
+                _statusControl.Measure(availableSize);
+
+            width = Math.Max(_statusControl.DesiredSize.Width + /*margin left*/ 8 + /*padding right*/ 6 + /*margin right*/ 6, width);
+
             if (width > availableWidth || height > availableHeight)
             {
                 var ratioX = availableWidth / width;
